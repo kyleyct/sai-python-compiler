@@ -1,4 +1,4 @@
-// py-worker.js - SAi Python Compiler Web Worker
+// py-worker.js - SAi Python Compiler Web Worker v1.1
 import { loadPyodide } from 'https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.mjs';
 
 let pyodide = null;
@@ -17,7 +17,21 @@ async function boot() {
 }
 
 self.onmessage = async (e) => {
-  const { type, code } = e.data;
+  const { type, code, filename, content } = e.data;
+
+  // ── 寫入 CSV 到虛擬檔案系統 ──
+  if (type === 'upload_csv') {
+    if (!pyodide) return;
+    try {
+      pyodide.FS.writeFile(filename, content);
+      self.postMessage({ type: 'csv_loaded', data: filename });
+    } catch (err) {
+      self.postMessage({ type: 'error', data: '寫入 CSV 失敗：' + String(err) });
+    }
+    return;
+  }
+
+  // ── 執行 Python 程式碼 ──
   if (type === 'run') {
     if (!pyodide) {
       self.postMessage({ type: 'error', data: 'Pyodide not ready yet.' });
