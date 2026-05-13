@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SAi Python Compiler</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
+    header { background: #16213e; padding: 12px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #0f3460; }
+    header h1 { font-size: 1.1rem; color: #4fc3f7; }
+    .badge { background: #0f3460; color: #4fc3f7; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; }
+    .toolbar { display: flex; gap: 8px; padding: 10px 16px; background: #16213e; border-bottom: 1px solid #0f3460; align-items: center; flex-wrap: wrap; }
+    .toolbar button { padding: 6px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; transition: opacity 0.2s; }
+    .toolbar button:hover { opacity: 0.85; }
+    #btn-run { background: #4caf50; color: white; }
+    #btn-reset { background: #f44336; color: white; }
+    #btn-clear { background: #607d8b; color: white; }
+    #btn-example1 { background: #0f3460; color: #4fc3f7; border: 1px solid #4fc3f7; }
+    #btn-example2 { background: #0f3460; color: #4fc3f7; border: 1px solid #4fc3f7; }
+    #btn-example3 { background: #0f3460; color: #4fc3f7; border: 1px solid #4fc3f7; }
+    #status { margin-left: auto; font-size: 0.8rem; color: #90caf9; }
+    .main { display: flex; flex: 1; overflow: hidden; }
+    .editor-panel { flex: 1; display: flex; flex-direction: column; border-right: 1px solid #0f3460; }
+    .panel-title { background: #0f3460; padding: 6px 14px; font-size: 0.8rem; color: #90caf9; letter-spacing: 0.5px; }
+    #editor { flex: 1; background: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospace; font-size: 0.9rem; border: none; outline: none; padding: 16px; resize: none; line-height: 1.6; tab-size: 4; }
+    .output-panel { width: 45%; display: flex; flex-direction: column; }
+    #console { flex: 1; background: #0d1117; color: #c9d1d9; font-family: 'Courier New', monospace; font-size: 0.85rem; padding: 16px; overflow-y: auto; white-space: pre-wrap; border-bottom: 1px solid #0f3460; }
+    #result-area { height: 200px; overflow: auto; padding: 10px; background: #111; }
+    #result-area table { border-collapse: collapse; width: 100%; font-size: 0.8rem; }
+    #result-area th { background: #0f3460; color: #4fc3f7; padding: 6px 10px; text-align: left; }
+    #result-area td { padding: 5px 10px; border-bottom: 1px solid #1e2a3a; color: #c9d1d9; }
+    #result-area tr:hover td { background: #1a2535; }
+    .error { color: #f48771; }
+    .success { color: #89d185; }
+    .info { color: #4fc3f7; }
+    #loading-overlay { position: fixed; inset: 0; background: #1a1a2e; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; gap: 20px; }
+    .spinner { width: 48px; height: 48px; border: 4px solid #0f3460; border-top-color: #4fc3f7; border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loading-text { color: #4fc3f7; font-size: 1rem; }
+    #inject-area { background: #16213e; border-top: 1px solid #0f3460; padding: 8px 16px; display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: #90caf9; }
+    #inject-code { flex: 1; background: #0d1117; color: #c9d1d9; border: 1px solid #0f3460; border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; font-family: monospace; }
+  </style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div id="loading-text">載入 Python 執行環境中 (Pyodide + NumPy + pandas)...</div>
+</div>
+
+<header>
+  <h1>SAi Python Compiler</h1>
+  <span class="badge">MVP v1.0</span>
+  <span class="badge">Pyodide</span>
+  <span class="badge">NumPy + pandas</span>
+</header>
+
+<div class="toolbar">
+  <button id="btn-run">▶ Run</button>
+  <button id="btn-reset">⟳ Reset Runtime</button>
+  <button id="btn-clear">✕ Clear Output</button>
+  <button id="btn-example1">Hello World</button>
+  <button id="btn-example2">NumPy 示例</button>
+  <button id="btn-example3">pandas 示例</button>
+  <span id="status">初始化中...</span>
+</div>
+
+<div class="main">
+  <div class="editor-panel">
+    <div class="panel-title">PYTHON EDITOR</div>
+    <textarea id="editor" spellcheck="false" placeholder="在此輸入或貼上 Python 程式碼..."></textarea>
+  </div>
+  <div class="output-panel">
+    <div class="panel-title">CONSOLE OUTPUT</div>
+    <div id="console"></div>
+    <div class="panel-title">RESULT PREVIEW (DataFrame / Value)</div>
+    <div id="result-area"></div>
+  </div>
+</div>
+
+<div id="inject-area">
+  <span>SAi 注入程式碼：</span>
+  <input id="inject-code" type="text" placeholder="由 SAi LLM 自動填入的程式碼將顯示於此..." readonly />
+  <button onclick="injectCode()" style="padding:4px 12px;background:#4caf50;color:white;border:none;border-radius:4px;cursor:pointer;font-size:0.8rem;">注入 Editor</button>
+</div>
+
+<script>
+  let pyWorker = null;
+  let workerReady = false;
+
+  function log(msg, cls = '') {
+    const c = document.getElementById('console');
+    const line = document.createElement('div');
+    if (cls) line.className = cls;
+    line.textContent = msg;
+    c.appendChild(line);
+    c.scrollTop = c.scrollHeight;
+  }
+
+  function initWorker() {
+    if (pyWorker) { pyWorker.terminate(); }
+    workerReady = false;
+    document.getElementById('status').textContent = '載入中...';
+    pyWorker = new Worker('py-worker.js', { type: 'module' });
+    pyWorker.onmessage = (e) => {
+      const { type, data } = e.data;
+      if (type === 'ready') {
+        workerReady = true;
+        document.getElementById('loading-overlay').style.display = 'none';
+        document.getElementById('status').textContent = '✓ 就緒';
+        log('✓ Python 環境就緒 (NumPy + pandas 已載入)', 'success');
+      } else if (type === 'boot_error') {
+        document.getElementById('loading-overlay').style.display = 'none';
+        document.getElementById('status').textContent = '✗ 載入失敗';
+        log('✗ 環境載入失敗：' + data, 'error');
+      } else if (type === 'stdout') {
+        log(data);
+      } else if (type === 'stderr') {
+        log(data, 'error');
+      } else if (type === 'result') {
+        document.getElementById('status').textContent = '✓ 執行完成';
+        if (data && data.type === 'dataframe') {
+          renderTable(data.html);
+        } else if (data && data.value !== undefined) {
+          document.getElementById('result-area').innerHTML = '<pre style="color:#89d185;padding:10px;">' + data.value + '</pre>';
+        } else {
+          document.getElementById('result-area').innerHTML = '';
+        }
+      } else if (type === 'error') {
+        document.getElementById('status').textContent = '✗ 執行錯誤';
+        log(data, 'error');
+      } else if (type === 'done') {
+        if (document.getElementById('status').textContent === '執行中...') {
+          document.getElementById('status').textContent = '✓ 完成';
+        }
+      }
+    };
+    pyWorker.onerror = (e) => {
+      document.getElementById('loading-overlay').style.display = 'none';
+      document.getElementById('status').textContent = '✗ Worker 錯誤';
+      log('Worker 錯誤：' + e.message, 'error');
+    };
+  }
+
+  function renderTable(html) {
+    document.getElementById('result-area').innerHTML = html;
+  }
+
+  document.getElementById('btn-run').onclick = () => {
+    if (!workerReady) { log('環境尚未就緒，請稍候...', 'info'); return; }
+    const code = document.getElementById('editor').value.trim();
+    if (!code) { log('請輸入程式碼', 'info'); return; }
+    document.getElementById('status').textContent = '執行中...';
+    log('--- 執行開始 ---', 'info');
+    pyWorker.postMessage({ type: 'run', code });
+  };
+
+  document.getElementById('btn-reset').onclick = () => {
+    log('--- 重設 Runtime ---', 'info');
+    document.getElementById('result-area').innerHTML = '';
+    initWorker();
+  };
+
+  document.getElementById('btn-clear').onclick = () => {
+    document.getElementById('console').innerHTML = '';
+    document.getElementById('result-area').innerHTML = '';
+  };
+
+  document.getElementById('editor').addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const s = e.target.selectionStart;
+      e.target.value = e.target.value.substring(0, s) + '    ' + e.target.value.substring(e.target.selectionEnd);
+      e.target.selectionStart = e.target.selectionEnd = s + 4;
+    }
+  });
+
+  const examples = {
+    'btn-example1': `# Hello World\nprint("Hello from SAi Python Compiler!")\nprint("NumPy version:", __import__('numpy').__version__)\nprint("pandas version:", __import__('pandas').__version__)`,
+    'btn-example2': `import numpy as np\n\narr = np.array([1, 2, 3, 4, 5])\nprint("Array:", arr)\nprint("Mean:", np.mean(arr))\nprint("Std:", np.std(arr))\nprint("Sum:", np.sum(arr))\n\nmatrix = np.random.rand(3, 3)\nprint("\\nRandom 3x3 matrix:\\n", matrix)`,
+    'btn-example3': `import pandas as pd\nimport numpy as np\n\ndata = {\n    '學生': ['Alice', 'Bob', 'Charlie', 'Diana'],\n    '數學': [85, 92, 78, 96],\n    '英文': [88, 75, 91, 83],\n    '科學': [90, 88, 85, 79]\n}\n\ndf = pd.DataFrame(data)\ndf['平均分'] = df[['數學', '英文', '科學']].mean(axis=1).round(1)\nprint(df.describe())\nresult = df`
+  };
+
+  ['btn-example1', 'btn-example2', 'btn-example3'].forEach(id => {
+    document.getElementById(id).onclick = () => {
+      document.getElementById('editor').value = examples[id];
+    };
+  });
+
+  function injectCode() {
+    const injected = document.getElementById('inject-code').value;
+    if (injected) {
+      document.getElementById('editor').value = injected;
+      log('✓ 程式碼已由 SAi 注入', 'success');
+    }
+  }
+
+  window.injectCode = injectCode;
+  initWorker();
+</script>
+</body>
+</html>
