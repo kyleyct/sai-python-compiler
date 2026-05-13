@@ -193,4 +193,142 @@
 
     pyWorker.onerror = (e) => {
       document.getElementById('loading-overlay').style.display = 'none';
-      document.getElementById('status').textContent = '
+      document.getElementById('status').textContent = '✗ Worker 錯誤';
+      log('Worker 錯誤：' + e.message, 'error');
+    };
+  }
+
+  // ── CSV Upload Logic ──────────────────────────
+
+  function handleCSVFiles(files) {
+    Array.from(files).forEach(file => {
+      if (!file.name.endsWith('.csv')) {
+        log('⚠ 只接受 .csv 格式：' + file.name, 'error');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const content = ev.target.result;
+        uploadedCSVs[file.name] = content;
+        renderFileList();
+        if (workerReady) {
+          pyWorker.postMessage({ type: 'upload_csv', filename: file.name, content });
+        }
+        log('✓ 已上傳：' + file.name + ' (' + content.split('\n').length + ' 行)', 'success');
+      };
+      reader.readAsText(file, 'UTF-8');
+    });
+  }
+
+  function renderFileList() {
+    const list = document.getElementById('csv-file-list');
+    list.innerHTML = '';
+    Object.entries(uploadedCSVs).forEach(([name, content]) => {
+      const rows = content.split('\n').filter(r => r.trim()).length;
+      const cols = (content.split('\n')[0] || '').split(',').length;
+      const tag = document.createElement('div');
+      tag.className = 'csv-file-tag';
+      tag.innerHTML = `
+        <span>📄 ${name}</span>
+        <span class="tag-info">${rows - 1} 行 × ${cols} 欄</span>
+        <button class="remove-btn" title="移除此檔案" onclick="removeCSV('${name}')">✕</button>
+      `;
+      list.appendChild(tag);
+    });
+  }
+
+  function removeCSV(name) {
+    delete uploadedCSVs[name];
+    renderFileList();
+    log('已移除：' + name, 'info');
+  }
+
+  // Drag & Drop
+  const dropZone = document.getElementById('csv-drop-zone');
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    handleCSVFiles(e.dataTransfer.files);
+  });
+
+  // Click to upload
+  document.getElementById('btn-upload-csv').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('csv-file-input').click();
+  });
+  document.getElementById('csv-drop-zone').addEventListener('click', () => {
+    document.getElementById('csv-file-input').click();
+  });
+  document.getElementById('csv-file-input').addEventListener('change', (e) => {
+    handleCSVFiles(e.target.files);
+    e.target.value = '';
+  });
+
+  // ── Run / Reset / Clear ───────────────────────
+
+  document.getElementById('btn-run').onclick = () => {
+    if (!workerReady) { log('環境尚未就緒，請稍候...', 'info'); return; }
+    const code = document.getElementById('editor').value.trim();
+    if (!code) { log('請輸入程式碼', 'info'); return; }
+    document.getElementById('status').textContent = '執行中...';
+    log('--- 執行開始 ---', 'info');
+    pyWorker.postMessage({ type: 'run', code });
+  };
+
+  document.getElementById('btn-reset').onclick = () => {
+    log('--- 重設 Runtime ---', 'info');
+    document.getElementById('result-area').innerHTML = '';
+    initWorker();
+  };
+
+  document.getElementById('btn-clear').onclick = () => {
+    document.getElementById('console').innerHTML = '';
+    document.getElementById('result-area').innerHTML = '';
+  };
+
+  // Tab key in editor
+  document.getElementById('editor').addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const s = e.target.selectionStart;
+      e.target.value = e.target.value.substring(0, s) + '    ' + e.target.value.substring(e.target.selectionEnd);
+      e.target.selectionStart = e.target.selectionEnd = s + 4;
+    }
+  });
+
+  // ── Examples ─────────────────────────────────
+
+  const examples = {
+    'btn-example1': `# Hello World\nprint("Hello from SAi Python Compiler!")\nprint("NumPy version:", __import__('numpy').__version__)\nprint("pandas version:", __import__('pandas').__version__)`,
+    'btn-example2': `import numpy as np\n\narr = np.array([1, 2, 3, 4, 5])\nprint("Array:", arr)\nprint("Mean:", np.mean(arr))\nprint("Std:", np.std(arr))\nprint("Sum:", np.sum(arr))\n\nmatrix = np.random.rand(3, 3)\nprint("\\nRandom 3x3 matrix:\\n", matrix)`,
+    'btn-example3': `import pandas as pd\nimport numpy as np\n\n# 如已上傳 CSV，可用：\n# df = pd.read_csv('你的檔名.csv')\n\n# 示例：建立 DataFrame\ndata = {\n    '學生': ['Alice', 'Bob', 'Charlie', 'Diana'],\n    '數學': [85, 92, 78, 96],\n    '英文': [88, 75, 91, 83],\n    '科學': [90, 88, 85, 79]\n}\ndf = pd.DataFrame(data)\ndf['平均分'] = df[['數學', '英文', '科學']].mean(axis=1).round(1)\nprint(df.to_string())\nresult = df`
+  };
+
+  ['btn-example1', 'btn-example2', 'btn-example3'].forEach(id => {
+    document.getElementById(id).onclick = () => {
+      document.getElementById('editor').value = examples[id];
+    };
+  });
+
+  // ── SAi Inject ────────────────────────────────
+
+  function injectCode() {
+    const injected = document.getElementById('inject-code').value;
+    if (injected) {
+      document.getElementById('editor').value = injected;
+      log('✓ 程式碼已由 SAi 注入', 'success');
+    }
+  }
+
+  window.injectCode = injectCode;
+  window.removeCSV = removeCSV;
+
+  initWorker();
+</script>
+</body>
+</html>
